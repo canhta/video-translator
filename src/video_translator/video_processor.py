@@ -1,70 +1,64 @@
-from pathlib import Path
-from gtts import gTTS
-from pydub import AudioSegment
-import moviepy.editor as mp
-import tempfile
+import subprocess
+import logging
+from .utils import save_temporary_file
+
+logger = logging.getLogger(__name__)
 
 
-def text_to_speech(sentences: list[str]) -> Path:
-    """
-    Convert a list of sentences to speech.
-
-    Args:
-        sentences (list[str]): List of sentences to convert to speech.
-
-    Returns:
-        Path: Path to the generated audio file.
-    """
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
-        temp_path = Path(temp_file.name)
-
-    combined_audio = AudioSegment.empty()
-    for sentence in sentences:
-        tts = gTTS(text=sentence, lang="vi")
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=True) as temp_sentence:
-            tts.save(temp_sentence.name)
-            audio_segment = AudioSegment.from_mp3(temp_sentence.name)
-            combined_audio += audio_segment
-
-    combined_audio.export(temp_path, format="mp3")
-    return temp_path
-
-
-def adjust_audio_duration(original_audio: Path, generated_audio: Path) -> Path:
-    """
-    Adjust the duration of the generated audio to match the original audio.
-
-    Args:
-        original_audio (Path): Path to the original audio file.
-        generated_audio (Path): Path to the generated audio file.
-
-    Returns:
-        Path: Path to the adjusted audio file.
-    """
-    original = AudioSegment.from_wav(original_audio)
-    generated = AudioSegment.from_mp3(generated_audio)
-
-    adjusted = generated.speedup(playback_speed=len(generated) / len(original))
-
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
-        temp_path = Path(temp_file.name)
-        adjusted.export(temp_path, format="wav")
-
-    return temp_path
+def extract_audio(input_video):
+    output_audio = save_temporary_file(suffix=".wav")
+    try:
+        logger.info(f"Extracting audio from {input_video}")
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-i",
+                input_video,
+                "-vn",
+                "-acodec",
+                "pcm_s16le",
+                "-ar",
+                "44100",
+                "-ac",
+                "2",
+                output_audio,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        logger.info(f"Audio extracted successfully to {output_audio}")
+        return output_audio
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error extracting audio: {e.stderr}")
+        raise
 
 
-def combine_audio_and_video(
-    video_path: Path, audio_path: Path, output_path: Path
-) -> None:
-    """
-    Combine video with the new audio.
-
-    Args:
-        video_path (Path): Path to the original video file.
-        audio_path (Path): Path to the new audio file.
-        output_path (Path): Path where the final video will be saved.
-    """
-    video = mp.VideoFileClip(str(video_path))
-    audio = mp.AudioFileClip(str(audio_path))
-    final_clip = video.set_audio(audio)
-    final_clip.write_videofile(str(output_path))
+def compose_final_video(input_video, synchronized_audio, output_video):
+    try:
+        logger.info(f"Composing final video with translated audio")
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-i",
+                input_video,
+                "-i",
+                synchronized_audio,
+                "-c:v",
+                "copy",
+                "-c:a",
+                "aac",
+                "-map",
+                "0:v:0",
+                "-map",
+                "1:a:0",
+                output_video,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        logger.info(f"Final video composed successfully: {output_video}")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error composing final video: {e.stderr}")
+        raise

@@ -9,10 +9,10 @@ Video Translator is a library for processing videos and text.
 ### Download Youtube Video
 
 ```sh
-poetry run download [URL]
+poetry run download [YOUTUBE_ID]
 
 # or
-youtube-dl -d [URL]
+youtube-dl -d [YOUTUBE_ID]
 ```
 
 After that, the .webm video file will be downloaded in the `./output.[video title]` folder.

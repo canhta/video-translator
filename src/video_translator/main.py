@@ -1,61 +1,76 @@
+import argparse
 import logging
-from pathlib import Path
-from .audio_processor import extract_audio, transcribe_audio
-from .text_processor import split_text, translate_text
-from .video_processor import (
-    text_to_speech,
-    adjust_audio_duration,
-    combine_audio_and_video,
+from .video_processor import compose_final_video
+from .audio_processor import generate_translated_speech, synchronize_audio
+from .text_processor import parse_vtt, translate_text, align_translated_text, write_vtt_file
+from .utils import (
+    setup_logging,
+    cleanup_temp_files,
+    ensure_ffmpeg,
+    get_input_files,
+    get_output_files,
 )
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
-
-def translate_video(input_path: str, output_path: str) -> None:
-    """
-    Translate a video from English to Vietnamese.
-
-    Args:
-        input_path (str): Path to the input video file.
-        output_path (str): Path where the translated video will be saved.
-    """
+def main():
     try:
-        input_path = Path(input_path)
-        output_path = Path(output_path)
+        # Parse command line arguments
+        parser = argparse.ArgumentParser(
+            description="Convert video speech from English to Vietnamese"
+        )
+        parser.add_argument("id", help="ID of the YouTube video to translate")
+        args = parser.parse_args()
+        id = args.id
+        # Set up logging
+        setup_logging()
+        logger = logging.getLogger(__name__)
+        logger.info(f"Starting video translation process for ID: {id}")
 
-        logger.info(f"Processing video: {input_path}")
+        # Ensure FFmpeg is installed
+        ensure_ffmpeg()
 
-        # Extract audio
-        audio_path = extract_audio(input_path)
+        # Get input and output file paths
+        input_files = get_input_files(id)
+        output_files = get_output_files(id)
 
-        # Transcribe audio
-        english_text = transcribe_audio(audio_path)
+        # Step 1: Parse VTT subtitle file
+        logger.info("Parsing VTT subtitle file")
+        subtitles = parse_vtt(input_files["vtt"])
 
-        # Split and translate text
-        sentences = split_text(english_text)
-        translated_sentences = [translate_text(sentence) for sentence in sentences]
+        # Step 2: Translate text from English to Vietnamese
+        logger.info("Translating subtitles from English to Vietnamese")
+        translated_subtitles = translate_text(subtitles)
+        write_vtt_file(translated_subtitles, output_files["vtt"])
 
-        # Generate Vietnamese audio
-        vietnamese_audio = text_to_speech(translated_sentences)
+        # Step 3: Align translated text with original timing
+        logger.info("Aligning translated text with original timing")
+        aligned_translated_subtitles = align_translated_text(translated_subtitles, subtitles)
 
-        # Adjust audio duration
-        adjusted_audio = adjust_audio_duration(audio_path, vietnamese_audio)
+        # Step 4: Generate translated speech
+        logger.info("Generating translated speech")
+        translated_audio = generate_translated_speech(aligned_translated_subtitles)
 
-        # Combine audio and video
-        combine_audio_and_video(input_path, adjusted_audio, output_path)
+        # Step 5: Synchronize translated audio with original audio
+        logger.info("Synchronizing translated audio with original audio")
+        synchronized_audio = synchronize_audio(
+            input_files["audio"], translated_audio, aligned_translated_subtitles
+        )
 
-        logger.info(f"Translated video saved to: {output_path}")
+        # Step 6: Compose final video with translated audio
+        logger.info("Composing final video with translated audio")
+        compose_final_video(input_files["video"], synchronized_audio, output_files["video"])
 
+        logger.info(f"Video translation completed successfully. Output saved as: {output_files["video"]}")
+    except FileNotFoundError as e:
+        logger.error(f"File not found: {str(e)}")
+    except RuntimeError as e:
+        logger.error(f"Runtime error: {str(e)}")
     except Exception as e:
-        logger.error(f"An error occurred: {str(e)}")
-        raise
+        logger.error(f"An unexpected error occurred during video translation: {str(e)}")
+    finally:
+        # Clean up temporary files
+        cleanup_temp_files()
 
 
 if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) != 3:
-        print("Usage: python -m video_translator.main <input_video> <output_video>")
-        sys.exit(1)
-    translate_video(sys.argv[1], sys.argv[2])
+    main()

@@ -1,4 +1,4 @@
-from .main import translate_video
+from .main import main
 
-__all__ = ["translate_video"]
+__all__ = ["main"]
 __version__ = "0.1.0"

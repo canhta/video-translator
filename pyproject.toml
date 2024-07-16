@@ -7,12 +7,12 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.12"
-moviepy = "^1.0.3"
-speechrecognition = "^3.10.4"
 googletrans = "^3.0.0"
-gtts = "^2.5.1"
 pydub = "^0.25.1"
 yt-dlp = "^2024.7.9"
+ffmpeg-python = "^0.2.0"
+webvtt-py = "^0.5.1"
+gtts = "^2.5.1"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -20,9 +20,11 @@ pytest = "^8.2.2"
 black = "^24.4.2"
 isort = "^5.13.2"
 flake8 = "^7.1.0"
+pre-commit = "^3.7.1"
 
 [tool.poetry.scripts]
 download = "src.yt_downloader.yt_downloader:main"
+translate = "src.video_translator:main"
 
 [build-system]
 requires = ["poetry-core"]

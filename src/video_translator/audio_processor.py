@@ -1,9 +1,16 @@
+import os
 import logging
 from pydub import AudioSegment
 from .utils import save_temporary_file
 from gtts import gTTS
 
 logger = logging.getLogger(__name__)
+
+
+def time_to_seconds(time_str):
+    """Convert time string (HH:MM:SS.mmm) to seconds."""
+    h, m, s = time_str.split(":")
+    return int(h) * 3600 + int(m) * 60 + float(s)
 
 
 def process_audio(audio_file):
@@ -17,9 +24,10 @@ def generate_translated_speech(aligned_translated_subtitles):
     translated_audio_segments = []
     for subtitle in aligned_translated_subtitles:
         text = subtitle["text"]
-        duration = int((subtitle["end"] - subtitle["start"]) * 1000)  # Convert to milliseconds
+        start = time_to_seconds(subtitle["start"])
+        end = time_to_seconds(subtitle["end"])
+        duration = int((end - start) * 1000)  # Convert to milliseconds
         audio_segment = text_to_speech(text, "vi")
-
         # Adjust the duration of the generated speech to match the original subtitle timing
         if len(audio_segment) > duration:
             audio_segment = audio_segment[:duration]
@@ -27,12 +35,10 @@ def generate_translated_speech(aligned_translated_subtitles):
             audio_segment = audio_segment + AudioSegment.silent(
                 duration=duration - len(audio_segment)
             )
-
         translated_audio_segments.append(audio_segment)
 
     logger.info("Combining translated audio segments")
     combined_audio = sum(translated_audio_segments)
-
     output_file = save_temporary_file(suffix=".wav")
     combined_audio.export(output_file, format="wav")
     logger.info(f"Translated speech generated and saved to {output_file}")
@@ -41,14 +47,35 @@ def generate_translated_speech(aligned_translated_subtitles):
 
 def synchronize_audio(original_audio, translated_audio, aligned_translated_subtitles):
     logger.info("Synchronizing translated audio with original audio")
-    original = AudioSegment.from_wav(original_audio)
-    translated = AudioSegment.from_wav(translated_audio)
+
+    try:
+        # Try to load the original audio file based on its extension
+        _, ext = os.path.splitext(original_audio)
+        if ext.lower() == ".wav":
+            original = AudioSegment.from_wav(original_audio)
+        elif ext.lower() == ".mp3":
+            original = AudioSegment.from_mp3(original_audio)
+        else:
+            original = AudioSegment.from_file(original_audio)
+
+        # Try to load the translated audio file
+        _, ext = os.path.splitext(translated_audio)
+        if ext.lower() == ".wav":
+            translated = AudioSegment.from_wav(translated_audio)
+        elif ext.lower() == ".mp3":
+            translated = AudioSegment.from_mp3(translated_audio)
+        else:
+            translated = AudioSegment.from_file(translated_audio)
+
+    except Exception as e:
+        logger.error(f"Error loading audio files: {str(e)}")
+        raise
 
     synchronized = AudioSegment.silent(duration=len(original))
 
     for subtitle in aligned_translated_subtitles:
-        start = int(subtitle["start"] * 1000)  # Convert to milliseconds
-        end = int(subtitle["end"] * 1000)
+        start = int(time_to_seconds(subtitle["start"]) * 1000)  # Convert to milliseconds
+        end = int(time_to_seconds(subtitle["end"]) * 1000)
         duration = end - start
 
         if len(translated) < duration:
